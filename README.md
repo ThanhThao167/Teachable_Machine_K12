@@ -1,6 +1,6 @@
 # Trợ lí AI điều khiển bài trình chiếu bằng cử chỉ
 
-Dự án STEM Tin học 12 — THPT Marie Curie. Học sinh huấn luyện mô hình nhận diện
+Học sinh huấn luyện mô hình nhận diện
 cử chỉ trên [Teachable Machine](https://teachablemachine.withgoogle.com/) (3 nhãn:
 `tien`, `lui`, `nghi`), rồi nạp vào trang web để chuyển slide bằng cử chỉ qua webcam.
 
