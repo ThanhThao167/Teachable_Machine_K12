@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 import streamlit as st
+from PIL import Image, ImageOps
 
 THU_MUC = Path(__file__).parent
 MO_HINH_MAU = "https://teachablemachine.withgoogle.com/models/_c-_TFkuu/"
@@ -15,6 +16,7 @@ CU_CHI = [
     ("lui", "Lùi", "Quay lại slide trước"),
     ("nghi", "Nghỉ", "Đứng yên, không lật slide"),
 ]
+KHUNG_ANH = (220, 220)  # mọi ảnh cử chỉ được đưa về cùng khung này (px)
 
 st.set_page_config(
     page_title="Trợ lí AI điều khiển trình chiếu bằng cử chỉ",
@@ -24,6 +26,13 @@ st.set_page_config(
 
 st.session_state.setdefault("url_mo_hinh", "")
 st.session_state.setdefault("noi_dung_slide", SLIDE_MAC_DINH)
+
+
+@st.cache_data(max_entries=10)
+def anh_cung_khung(duong_dan: Path) -> Image.Image:
+    """Thu nhỏ ảnh vừa khung, phần thừa để trong suốt nên không bị cắt mất tay."""
+    with Image.open(duong_dan) as anh:
+        return ImageOps.pad(anh.convert("RGBA"), KHUNG_ANH, color=(0, 0, 0, 0))
 
 
 def dung_mo_hinh_mau():
@@ -52,10 +61,10 @@ st.markdown(
 
 with st.container(horizontal=True, gap="medium"):
     for ten_tep, nhan, y_nghia in CU_CHI:
-        with st.container(border=True):
+        with st.container(border=True, width="content"):
             anh = THU_MUC / f"{ten_tep}.png"
             if anh.exists():
-                st.image(anh, alt=f"Cử chỉ {nhan}: {y_nghia.lower()}", width="stretch")
+                st.image(anh_cung_khung(anh), alt=f"Cử chỉ {nhan}: {y_nghia.lower()}")
             else:
                 st.warning(f"Thiếu ảnh `{ten_tep}.png`", icon=":material/image_not_supported:")
             st.markdown(f"**{nhan}** · nhãn `{ten_tep}`")
