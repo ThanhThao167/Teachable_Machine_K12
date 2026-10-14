@@ -1,141 +1,119 @@
-<!DOCTYPE html>
-<html lang="vi">
-<head>
-<meta charset="utf-8">
-<title>Trợ lí AI điều khiển bài trình chiếu bằng cử chỉ</title>
-<style>
-  :root{--bg:#111;--fg:#fff;--panel:#1d1d1d;--accent:#4da3ff}
-  body{font-family:Arial,Helvetica,sans-serif;margin:0;background:var(--bg);color:var(--fg)}
-  #slide{height:420px;display:flex;align-items:center;justify-content:center;font-size:40px;text-align:center;padding:24px;box-sizing:border-box;border-radius:10px 10px 0 0;background:#2a2a2a;transition:background-color .25s ease}
-  #bar{display:flex;gap:18px;align-items:center;padding:10px 20px;background:var(--panel);flex-wrap:wrap;border-radius:0 0 10px 10px}
-  #label{font-size:18px;min-width:230px}
-  #thanhCho{height:6px;background:#333;border-radius:3px;width:140px;overflow:hidden}
-  #thanhCho div{height:100%;width:0;background:var(--accent)}
-  canvas{border-radius:8px;display:block}
-  .nho{font-size:13px;color:#aaa}
-  .loi{color:#ff8a80}
-</style>
-</head>
-<body>
+import json
+from pathlib import Path
 
-<div id="slide">Đang nạp mô hình và bật camera…</div>
+import streamlit as st
 
-<div id="bar">
-  <div id="cam"></div>
-  <div id="label">Cử chỉ: —</div>
-  <div>
-    <div class="nho">Thời gian chờ</div>
-    <div id="thanhCho"><div id="thanhChoFill"></div></div>
-  </div>
-  <label class="nho"><input type="checkbox" id="lienTiep" checked> Cho phép lật liên tiếp khi giữ nguyên cử chỉ</label>
-  <div id="pos" class="nho"></div>
-</div>
+THU_MUC = Path(__file__).parent
+MO_HINH_MAU = "https://teachablemachine.withgoogle.com/models/_c-_TFkuu/"
+SLIDE_MAC_DINH = """Slide 1 — Tên dự án của nhóm
+Slide 2 — Vấn đề thực tiễn
+Slide 3 — Cách nhóm thu thập dữ liệu
+Slide 4 — Kết quả kiểm thử
+Slide 5 — Bài học về đạo đức AI"""
+CU_CHI = [
+    ("tien", "Tiến", "Chuyển sang slide sau"),
+    ("lui", "Lùi", "Quay lại slide trước"),
+    ("nghi", "Nghỉ", "Đứng yên, không lật slide"),
+]
 
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/pose@0.8/dist/teachablemachine-pose.min.js"></script>
-<script>
-// Đường dẫn mô hình và nội dung slide do app.py điền vào (học sinh nhập trên Streamlit)
-const CAU_HINH = /*CAU_HINH*/null;
+st.set_page_config(
+    page_title="Trợ lí AI điều khiển trình chiếu bằng cử chỉ",
+    page_icon=":material/slideshow:",
+    layout="wide",
+)
 
-// ============================================================
-//  THAM SỐ DO CON NGƯỜI ĐẶT RA — đây là chỗ con người giữ quyền
-//  kiểm soát hệ thống AI. Nhóm phải giải thích được ý nghĩa (SP5).
-// ============================================================
-const NGUONG_TIN_CAY = 0.90;   // dưới mức này thì KHÔNG hành động
-const THOI_GIAN_CHO  = 45;     // số khung hình nghỉ giữa 2 lần lật (~1,5 giây)
+st.session_state.setdefault("url_mo_hinh", "")
+st.session_state.setdefault("noi_dung_slide", SLIDE_MAC_DINH)
 
-// Mỗi slide một màu nền riêng để nhận biết ngay bằng mắt là đã chuyển slide
-// (lặp lại vòng nếu nhóm có nhiều hơn 8 slide).
-const MAU_SLIDE = ["#2d5d7c","#6b3fa0","#1f7a5c","#a3401f","#7a1f4d","#4d5d1f","#1f4d7a","#7a1f1f"];
 
-let SLIDES = [];
-let model, webcam, ctx, i = 0, cooldown = 0, nhanTruoc = "nghi";
+def dung_mo_hinh_mau():
+    st.session_state.url_mo_hinh = MO_HINH_MAU
 
-function render(){
-  const o = document.getElementById("slide");
-  o.innerText = SLIDES[i];
-  o.style.background = MAU_SLIDE[i % MAU_SLIDE.length];
-  document.getElementById("pos").innerText = "Slide " + (i + 1) + "/" + SLIDES.length;
-}
 
-function baoLoi(thongBao){
-  const o = document.getElementById("slide");
-  o.innerHTML = "";
-  const p = document.createElement("div");
-  p.className = "loi";
-  p.style.fontSize = "20px";
-  p.innerText = thongBao;
-  o.appendChild(p);
-}
+st.title("Trợ lí AI điều khiển bài trình chiếu bằng cử chỉ")
+st.caption("Dự án STEM Tin học 12 · THPT Marie Curie")
 
-async function batDau(){
-  if (!CAU_HINH){ baoLoi("Chưa có cấu hình. Hãy nhập đường dẫn mô hình ở phía trên."); return; }
-  const URL_MODEL = CAU_HINH.url;
-  SLIDES = CAU_HINH.slides;
-  try{
-    model = await tmPose.load(URL_MODEL + "model.json", URL_MODEL + "metadata.json");
-  }catch(e){
-    baoLoi("Không nạp được mô hình. Kiểm tra lại đường dẫn (Export Model → Tensorflow.js → Upload my model) và kết nối mạng.");
-    return;
-  }
-  try{
-    // Tự xin camera trước: tmPose chỉ báo lỗi chung chung, còn ở đây biết rõ nguyên nhân
-    const thu = await navigator.mediaDevices.getUserMedia({ video: true });
-    thu.getTracks().forEach(t => t.stop());
-    webcam = new tmPose.Webcam(200, 200, true);          // true = lật gương
-    await webcam.setup();                                // trình duyệt xin quyền camera
-    await webcam.play();
-  }catch(e){
-    const ten = (e && e.name) || "";
-    if (ten === "NotAllowedError") baoLoi("Trình duyệt đang chặn camera. Bấm biểu tượng camera trên thanh địa chỉ → Cho phép, rồi tải lại trang.");
-    else if (ten === "NotFoundError") baoLoi("Không tìm thấy webcam. Hãy cắm webcam rồi tải lại trang.");
-    else if (ten === "NotReadableError") baoLoi("Webcam đang bị phần mềm khác dùng (Zoom, Teams…). Đóng phần mềm đó rồi tải lại trang.");
-    else baoLoi("Không bật được camera. Kiểm tra webcam và quyền camera của trình duyệt.");
-    return;
-  }
-  const c = document.createElement("canvas");
-  c.width = 200; c.height = 200;
-  ctx = c.getContext("2d");
-  document.getElementById("cam").appendChild(c);
-  render();
-  window.requestAnimationFrame(loop);
-}
+with st.expander("Chuẩn bị trước khi test", icon=":material/checklist:"):
+    st.markdown(
+        """
+1. Dùng máy có **webcam** và trình duyệt **Chrome** hoặc **Edge**, có Internet.
+2. Đóng Zoom, Teams hoặc phần mềm đang chiếm camera.
+3. Bấm **Cho phép (Allow)** khi trình duyệt hỏi quyền camera.
+4. Đứng cách camera 1,5–2 m, thấy rõ nửa thân trên và hai tay.
+"""
+    )
 
-async function loop(){
-  webcam.update();
-  await predict();
-  window.requestAnimationFrame(loop);
-}
+# ---------- Bước 1: mô hình mẫu của giáo viên ----------
+st.subheader("1. Mô hình mẫu của giáo viên", divider="gray")
+st.markdown(
+    "Mô hình mẫu nhận 3 cử chỉ dưới đây. Nhóm nào **chưa làm xong mô hình** "
+    "thì dùng tạm mô hình mẫu để thử trước."
+)
 
-async function predict(){
-  const { pose, posenetOutput } = await model.estimatePose(webcam.canvas);
-  const pred = await model.predict(posenetOutput);
+with st.container(horizontal=True, gap="medium"):
+    for ten_tep, nhan, y_nghia in CU_CHI:
+        with st.container(border=True):
+            anh = THU_MUC / f"{ten_tep}.png"
+            if anh.exists():
+                st.image(anh, alt=f"Cử chỉ {nhan}: {y_nghia.lower()}", width="stretch")
+            else:
+                st.warning(f"Thiếu ảnh `{ten_tep}.png`", icon=":material/image_not_supported:")
+            st.markdown(f"**{nhan}** · nhãn `{ten_tep}`")
+            st.caption(y_nghia)
 
-  let best = pred[0];
-  for (const p of pred) if (p.probability > best.probability) best = p;
-  document.getElementById("label").innerText =
-      "Cử chỉ: " + best.className + " (" + (best.probability * 100).toFixed(0) + "%)";
+st.markdown("Đường dẫn mô hình mẫu (bấm biểu tượng sao chép ở góc phải):")
+st.code(MO_HINH_MAU, language=None)
 
-  // Hai điều kiện luôn phải thoả: đủ tin cậy VÀ đã hết thời gian chờ.
-  let duocPhep = best.probability > NGUONG_TIN_CAY && cooldown <= 0;
+# ---------- Bước 2: nạp mô hình ----------
+st.subheader("2. Nạp mô hình và nội dung slide", divider="gray")
 
-  // Lựa chọn thiết kế của nhóm: có cho lật liên tiếp khi giữ nguyên cử chỉ không?
-  // Bỏ chọn ô này = mỗi lần muốn lật phải hạ tay về "nghi" rồi giơ lại.
-  if (!document.getElementById("lienTiep").checked) duocPhep = duocPhep && best.className !== nhanTruoc;
+with st.form("form_nap_mo_hinh"):
+    url = st.text_input(
+        "Đường dẫn mô hình Teachable Machine",
+        key="url_mo_hinh",
+        placeholder="https://teachablemachine.withgoogle.com/models/xxxxxxxx/",
+        help="Teachable Machine → Export Model → Tensorflow.js → Upload my model.",
+    )
+    noi_dung = st.text_area(
+        "Nội dung các slide của nhóm (mỗi dòng là một slide)",
+        key="noi_dung_slide",
+        height=150,
+    )
+    with st.container(horizontal=True):
+        bat_dau = st.form_submit_button(
+            "Nạp mô hình và bật camera", type="primary", icon=":material/videocam:"
+        )
+        dung_mau = st.form_submit_button(
+            "Dùng mô hình mẫu của GV",
+            icon=":material/school:",
+            on_click=dung_mo_hinh_mau,
+        )
 
-  if (duocPhep){
-    if (best.className === "tien" && i < SLIDES.length - 1){ i++; render(); cooldown = THOI_GIAN_CHO; }
-    else if (best.className === "lui" && i > 0){ i--; render(); cooldown = THOI_GIAN_CHO; }
-  }
-  nhanTruoc = best.className;
+if bat_dau or dung_mau:
+    url = st.session_state.url_mo_hinh.strip()
+    slides = [dong for dong in noi_dung.splitlines() if dong.strip()]
+    if not url.startswith(("https://", "http://")):
+        st.error("Đường dẫn mô hình chưa đúng. Đường dẫn phải bắt đầu bằng `https://`.")
+    elif not slides:
+        st.error("Hãy nhập ít nhất một dòng nội dung slide.")
+    else:
+        if not url.endswith("/"):
+            url += "/"
+        st.session_state.cau_hinh = {"url": url, "slides": slides}
 
-  if (cooldown > 0) cooldown--;
-  document.getElementById("thanhChoFill").style.width = (cooldown / THOI_GIAN_CHO * 100) + "%";
-
-  if (webcam.canvas) ctx.drawImage(webcam.canvas, 0, 0);
-}
-
-batDau();
-</script>
-</body>
-</html>
+# ---------- Bước 3: trình chiếu ----------
+cau_hinh = st.session_state.get("cau_hinh")
+if cau_hinh:
+    st.subheader("3. Trình chiếu bằng cử chỉ", divider="gray")
+    if cau_hinh["url"] == MO_HINH_MAU:
+        st.caption(":material/school: Đang dùng mô hình mẫu của giáo viên.")
+    else:
+        st.caption(f":material/model_training: Đang dùng mô hình: `{cau_hinh['url']}`")
+    # Thay "<" để nội dung slide không thể đóng thẻ <script> trong trang
+    du_lieu = json.dumps(cau_hinh, ensure_ascii=False).replace("<", "\\u003c")
+    trang = (THU_MUC / "index.html").read_text(encoding="utf-8")
+    st.iframe(
+        trang.replace("/*CAU_HINH*/null", du_lieu),
+        height=640,
+        alt="Trang trình chiếu điều khiển bằng cử chỉ qua webcam",
+    )
