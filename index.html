@@ -28,6 +28,7 @@
     <div id="thanhCho"><div id="thanhChoFill"></div></div>
   </div>
   <label class="nho"><input type="checkbox" id="lienTiep" checked> Cho phép lật liên tiếp khi giữ nguyên cử chỉ</label>
+  <label class="nho" title="Chỉ bật khi Tiến và Lùi bị ngược: mô hình được huấn luyện bằng ảnh KHÔNG lật gương"><input type="checkbox" id="daoChieu"> Đảo trái–phải cho mô hình</label>
   <div id="pos" class="nho"></div>
 </div>
 
@@ -82,7 +83,10 @@ async function batDau(){
     // Tự xin camera trước: tmPose chỉ báo lỗi chung chung, còn ở đây biết rõ nguyên nhân
     const thu = await navigator.mediaDevices.getUserMedia({ video: true });
     thu.getTracks().forEach(t => t.stop());
-    webcam = new tmPose.Webcam(200, 200, true);          // true = lật gương
+    // true = lật gương, PHẢI giữ nguyên: Teachable Machine cũng lật gương khi ghi mẫu bằng webcam,
+    // mà mô hình phân biệt trái/phải (lật ảnh thì "tien" thành "lui" và ngược lại).
+    // Nhờ vậy khung camera trên trang giống hệt ảnh mẫu: người trình bày cứ làm như soi gương.
+    webcam = new tmPose.Webcam(200, 200, true);
     await webcam.setup();                                // trình duyệt xin quyền camera
     await webcam.play();
   }catch(e){
@@ -107,8 +111,20 @@ async function loop(){
   window.requestAnimationFrame(loop);
 }
 
+// Khung hình đã lật trái–phải, chỉ dùng khi bật ô "Đảo trái–phải cho mô hình"
+const khungDao = document.createElement("canvas");
+khungDao.width = 200; khungDao.height = 200;
+const ctxDao = khungDao.getContext("2d");
+ctxDao.translate(200, 0);
+ctxDao.scale(-1, 1);
+
 async function predict(){
-  const { pose, posenetOutput } = await model.estimatePose(webcam.canvas);
+  let anhVao = webcam.canvas;
+  if (document.getElementById("daoChieu").checked){
+    ctxDao.drawImage(webcam.canvas, 0, 0);
+    anhVao = khungDao;
+  }
+  const { pose, posenetOutput } = await model.estimatePose(anhVao);
   const pred = await model.predict(posenetOutput);
 
   let best = pred[0];
