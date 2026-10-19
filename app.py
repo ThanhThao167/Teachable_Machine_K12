@@ -12,9 +12,9 @@ Slide 3 — Cách nhóm thu thập dữ liệu
 Slide 4 — Kết quả kiểm thử
 Slide 5 — Bài học về đạo đức AI"""
 CU_CHI = [
-    ("tien", "Tiến", "Chuyển sang slide sau"),
-    ("lui", "Lùi", "Quay lại slide trước"),
-    ("nghi", "Nghỉ", "Đứng yên, không lật slide"),
+    ("tien", "Tiến", "Tay phải nắm lại, đặt lên ngực trái → slide sau"),
+    ("lui", "Lùi", "Tay trái vắt chéo, đặt lên vai phải → slide trước"),
+    ("nghi", "Nghỉ", "Hai tay buông xuôi → không lật slide"),
 ]
 KHUNG_ANH = (220, 220)  # mọi ảnh cử chỉ được đưa về cùng khung này (px)
 
@@ -69,6 +69,13 @@ with st.container(horizontal=True, gap="medium"):
                 st.warning(f"Thiếu ảnh `{ten_tep}.png`", icon=":material/image_not_supported:")
             st.markdown(f"**{nhan}** · nhãn `{ten_tep}`")
             st.caption(y_nghia)
+
+st.info(
+    "Ảnh mẫu và khung camera đều hiển thị **như soi gương**. Hãy nhìn khung camera "
+    "và làm giống hệt ảnh. Nếu dùng nhầm tay bên kia, mô hình sẽ hiểu **Tiến thành Lùi** "
+    "và ngược lại.",
+    icon=":material/flip:",
+)
 
 st.markdown("Đường dẫn mô hình mẫu (bấm biểu tượng sao chép ở góc phải):")
 st.code(MO_HINH_MAU, language=None)
